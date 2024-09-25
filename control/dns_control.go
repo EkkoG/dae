@@ -639,7 +639,7 @@ func (c *DnsController) dialSend(invokingDepth int, req *udpRequest, data []byte
 			}
 			respMsg = &msg
 			cancelDnsReqCtx()
-		case dns.UpstreamScheme_H3, dns.UpstreamScheme_HTTP3:
+		case dns.UpstreamScheme_H3:
 			roundTripper := &http3.RoundTripper{
 				TLSClientConfig: &tls.Config{
 					ServerName:         upstream.Hostname,
