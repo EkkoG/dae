@@ -665,7 +665,7 @@ func (c *DnsController) dialSend(invokingDepth int, req *udpRequest, data []byte
 			client := &http.Client{
 				Transport: roundTripper,
 			}
-			msg, err := httpDNS(client, dialArgument.bestTarget.String(), data)
+			msg, err := httpDNS(client, dialArgument.bestTarget.String(), upstream.Hostname, data)
 			if err != nil {
 				return err
 			}
@@ -742,6 +742,10 @@ func (c *DnsController) dialSend(invokingDepth int, req *udpRequest, data []byte
 		case dns.UpstreamScheme_HTTPS:
 
 			httpTransport := http.Transport{
+				TLSClientConfig: &tls.Config{
+					ServerName:         upstream.Hostname,
+					InsecureSkipVerify: false,
+				},
 				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 					return &netproxy.FakeNetConn{Conn: conn}, nil
 				},
@@ -749,7 +753,7 @@ func (c *DnsController) dialSend(invokingDepth int, req *udpRequest, data []byte
 			client := http.Client{
 				Transport: &httpTransport,
 			}
-			msg, err := httpDNS(&client, dialArgument.bestTarget.String(), data)
+			msg, err := httpDNS(&client, dialArgument.bestTarget.String(), upstream.Hostname, data)
 			if err != nil {
 				return err
 			}
@@ -846,7 +850,7 @@ func (c *DnsController) dialSend(invokingDepth int, req *udpRequest, data []byte
 	return nil
 }
 
-func httpDNS(client *http.Client, target string, data []byte) (respMsg *dnsmessage.Msg, err error) {
+func httpDNS(client *http.Client, target string, host string, data []byte) (respMsg *dnsmessage.Msg, err error) {
 	serverURL := url.URL{
 		Scheme: "https",
 		Host:   target,
@@ -859,6 +863,7 @@ func httpDNS(client *http.Client, target string, data []byte) (respMsg *dnsmessa
 	}
 	req.Header.Set("Content-Type", "application/dns-message")
 	req.Header.Set("Accept", "application/dns-message")
+	req.Host = host
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
