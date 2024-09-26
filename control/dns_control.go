@@ -665,7 +665,7 @@ func (c *DnsController) dialSend(invokingDepth int, req *udpRequest, data []byte
 			client := &http.Client{
 				Transport: roundTripper,
 			}
-			msg, err := httpDNS(client, dialArgument.bestTarget.String(), upstream.Hostname, data)
+			msg, err := sendHttpDNS(client, dialArgument.bestTarget.String(), upstream.Hostname, data)
 			if err != nil {
 				return err
 			}
@@ -704,7 +704,7 @@ func (c *DnsController) dialSend(invokingDepth int, req *udpRequest, data []byte
 			binary.BigEndian.PutUint16(data[0:2], 0)
 			
 
-			msg, err := streamDNS(stream, data)
+			msg, err := sendStreamDNS(stream, data)
 			if err != nil {
 				return err
 			}
@@ -734,7 +734,7 @@ func (c *DnsController) dialSend(invokingDepth int, req *udpRequest, data []byte
 		_ = conn.SetDeadline(time.Now().Add(4900 * time.Millisecond))
 		switch upstream.Scheme {
 		case dns.UpstreamScheme_TCP, dns.UpstreamScheme_TLS, dns.UpstreamScheme_TCP_UDP:
-			msg, err := streamDNS(conn, data)
+			msg, err := sendStreamDNS(conn, data)
 			if err != nil {
 				return err
 			}
@@ -753,7 +753,7 @@ func (c *DnsController) dialSend(invokingDepth int, req *udpRequest, data []byte
 			client := http.Client{
 				Transport: &httpTransport,
 			}
-			msg, err := httpDNS(&client, dialArgument.bestTarget.String(), upstream.Hostname, data)
+			msg, err := sendHttpDNS(&client, dialArgument.bestTarget.String(), upstream.Hostname, data)
 			if err != nil {
 				return err
 			}
@@ -850,7 +850,7 @@ func (c *DnsController) dialSend(invokingDepth int, req *udpRequest, data []byte
 	return nil
 }
 
-func httpDNS(client *http.Client, target string, host string, data []byte) (respMsg *dnsmessage.Msg, err error) {
+func sendHttpDNS(client *http.Client, target string, host string, data []byte) (respMsg *dnsmessage.Msg, err error) {
 	serverURL := url.URL{
 		Scheme: "https",
 		Host:   target,
@@ -881,8 +881,8 @@ func httpDNS(client *http.Client, target string, host string, data []byte) (resp
 	return respMsg, nil
 }
 
-func streamDNS(stream io.ReadWriter, data []byte) (respMsg *dnsmessage.Msg, err error) {
-	// We should write two byte length in the front of QUIC DNS request.
+func sendStreamDNS(stream io.ReadWriter, data []byte) (respMsg *dnsmessage.Msg, err error) {
+	// We should write two byte length in the front of stream DNS request.
 	bReq := pool.Get(2 + len(data))
 	defer pool.Put(bReq)
 	binary.BigEndian.PutUint16(bReq, uint16(len(data)))
