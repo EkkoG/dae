@@ -6,6 +6,7 @@
 package control
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/binary"
@@ -702,7 +703,6 @@ func (c *DnsController) dialSend(invokingDepth int, req *udpRequest, data []byte
 			// msg id should set to 0 when transport over QUIC.
 			// thanks https://github.com/natesales/q/blob/1cb2639caf69bd0a9b46494a3c689130df8fb24a/transport/quic.go#L97
 			binary.BigEndian.PutUint16(data[0:2], 0)
-			
 
 			msg, err := sendStreamDNS(stream, data)
 			if err != nil {
@@ -713,6 +713,7 @@ func (c *DnsController) dialSend(invokingDepth int, req *udpRequest, data []byte
 
 	case consts.L4ProtoStr_TCP:
 		// We can block here because we are in a coroutine.
+		fmt.Println("dial tcp", id)
 
 		conn, err = bestContextDialer.DialContext(ctxDial, common.MagicNetwork("tcp", dialArgument.mark, dialArgument.mptcp), dialArgument.bestTarget.String())
 		if upstream.Scheme == dns.UpstreamScheme_TLS {
@@ -728,10 +729,11 @@ func (c *DnsController) dialSend(invokingDepth int, req *udpRequest, data []byte
 		defer func() {
 			if !connClosed {
 				conn.Close()
+				fmt.Println("close conn", id)
 			}
 		}()
 
-		_ = conn.SetDeadline(time.Now().Add(4900 * time.Millisecond))
+		_ = conn.SetDeadline(time.Now().Add(49000 * time.Millisecond))
 		switch upstream.Scheme {
 		case dns.UpstreamScheme_TCP, dns.UpstreamScheme_TLS, dns.UpstreamScheme_TCP_UDP:
 			msg, err := sendStreamDNS(conn, data)
@@ -758,6 +760,40 @@ func (c *DnsController) dialSend(invokingDepth int, req *udpRequest, data []byte
 				return err
 			}
 			respMsg = msg
+		case dns.UpstreamScheme_ODoH:
+			query := upstream.Query
+			// targethost and targetpath is required.
+			if query == nil {
+				return fmt.Errorf("targethost and targetpath is required")
+			}
+			targetHost := query.Get("targethost")
+			targetPath := query.Get("targetpath")
+			if targetHost == "" || targetPath == "" {
+				return fmt.Errorf("targethost and targetpath is required")
+			}
+			cfgs, err := fetchTargetConfigs(*http.DefaultClient, targetHost)
+			if err != nil {
+				return err
+			}
+			tlsConfig := &tls.Config{
+				InsecureSkipVerify: false,
+				ServerName: upstream.Hostname,
+			}
+			httpTransport := http.Transport{
+				TLSClientConfig: tlsConfig,
+				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+					return &netproxy.FakeNetConn{Conn: conn}, nil
+				},
+			}
+			
+			client := http.Client{
+				Transport: &httpTransport,
+			}
+			msg, err := sendODoHRequest(&client, data, cfgs, true, targetHost, dialArgument.bestTarget.String(), upstream.Hostname)
+			if err != nil {
+				return err
+			}
+			respMsg = msg
 		}
 	default:
 		return fmt.Errorf("unexpected l4proto: %v", dialArgument.l4proto)
@@ -766,6 +802,7 @@ func (c *DnsController) dialSend(invokingDepth int, req *udpRequest, data []byte
 	// Close conn before the recursive call.
 	conn.Close()
 	connClosed = true
+	fmt.Println("ahhh4234234", id)
 
 	// Route response.
 	upstreamIndex, nextUpstream, err := c.routing.ResponseSelect(respMsg, upstream)
@@ -857,7 +894,7 @@ func sendHttpDNS(client *http.Client, target string, host string, data []byte) (
 		Path:   "/dns-query",
 	}
 
-	req, err := http.NewRequest(http.MethodPost, serverURL.String(), strings.NewReader(string(data)))
+	req, err := http.NewRequest(http.MethodPost, serverURL.String(), bytes.NewBuffer(data))
 	if err != nil {
 		return nil, err
 	}
@@ -911,8 +948,7 @@ func sendStreamDNS(stream io.ReadWriter, data []byte) (respMsg *dnsmessage.Msg, 
 	}
 	var msg dnsmessage.Msg
 	if err = msg.Unpack(buf[:n]); err != nil {
-		return  nil, err
+		return nil, err
 	}
 	return &msg, nil
 }
-		

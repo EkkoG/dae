@@ -35,6 +35,7 @@ const (
 	UpstreamScheme_HTTPS         UpstreamScheme = "https"
 	upstreamScheme_H3_Alias      UpstreamScheme = "http3"
 	UpstreamScheme_H3            UpstreamScheme = "h3"
+	UpstreamScheme_ODoH          UpstreamScheme = "odoh"
 )
 
 func (s UpstreamScheme) ContainsTcp() bool {
@@ -47,7 +48,7 @@ func (s UpstreamScheme) ContainsTcp() bool {
 	}
 }
 
-func ParseRawUpstream(raw *url.URL) (scheme UpstreamScheme, hostname string, port uint16, err error) {
+func ParseRawUpstream(raw *url.URL) (scheme UpstreamScheme, hostname string, port uint16, query url.Values, err error) {
 	var __port string
 	switch scheme = UpstreamScheme(raw.Scheme); scheme {
 	case upstreamScheme_TCP_UDP_Alias:
@@ -61,7 +62,7 @@ func ParseRawUpstream(raw *url.URL) (scheme UpstreamScheme, hostname string, por
 	case upstreamScheme_H3_Alias:
 		scheme = UpstreamScheme_H3
 		fallthrough
-	case UpstreamScheme_HTTPS, UpstreamScheme_H3:
+	case UpstreamScheme_HTTPS, UpstreamScheme_H3, UpstreamScheme_ODoH:
 		__port = raw.Port()
 		if __port == "" {
 			__port = "443"
@@ -72,26 +73,27 @@ func ParseRawUpstream(raw *url.URL) (scheme UpstreamScheme, hostname string, por
 			__port = "853"
 		}
 	default:
-		return "", "", 0, fmt.Errorf("unexpected scheme: %v", raw.Scheme)
+		return "", "", 0, nil, fmt.Errorf("unexpected scheme: %v", raw.Scheme)
 	}
 	_port, err := strconv.ParseUint(__port, 10, 16)
 	if err != nil {
-		return "", "", 0, fmt.Errorf("failed to parse dns_upstream port: %v", err)
+		return "", "", 0, nil, fmt.Errorf("failed to parse dns_upstream port: %v", err)
 	}
 	port = uint16(_port)
 	hostname = raw.Hostname()
-	return scheme, hostname, port, nil
+	return scheme, hostname, port, raw.Query(), nil
 }
 
 type Upstream struct {
 	Scheme   UpstreamScheme
 	Hostname string
 	Port     uint16
+	Query    url.Values
 	*netutils.Ip46
 }
 
 func NewUpstream(ctx context.Context, upstream *url.URL, resolverNetwork string) (up *Upstream, err error) {
-	scheme, hostname, port, err := ParseRawUpstream(upstream)
+	scheme, hostname, port, query, err := ParseRawUpstream(upstream)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrFormat, err)
 	}
@@ -119,6 +121,7 @@ func NewUpstream(ctx context.Context, upstream *url.URL, resolverNetwork string)
 		Hostname: hostname,
 		Port:     port,
 		Ip46:     ip46,
+		Query:    query,
 	}, nil
 }
 
@@ -133,7 +136,7 @@ func (u *Upstream) SupportedNetworks() (ipversions []consts.IpVersionStr, l4prot
 		}
 	}
 	switch u.Scheme {
-	case UpstreamScheme_TCP, UpstreamScheme_HTTPS, UpstreamScheme_TLS:
+	case UpstreamScheme_TCP, UpstreamScheme_HTTPS, UpstreamScheme_TLS, UpstreamScheme_ODoH:
 		l4protos = []consts.L4ProtoStr{consts.L4ProtoStr_TCP}
 	case UpstreamScheme_UDP, UpstreamScheme_QUIC, UpstreamScheme_H3:
 		l4protos = []consts.L4ProtoStr{consts.L4ProtoStr_UDP}
