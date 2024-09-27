@@ -103,4 +103,4 @@ require (
 //replace github.com/cilium/ebpf => /home/mzz/goProjects/ebpf
 //replace github.com/daeuniverse/dae-config-dist/go/dae_config => /home/mzz/antlrProjects/dae-config/build/go/dae_config
 
-replace github.com/daeuniverse/outbound => github.com/EkkoG/outbound v0.0.0-20240927163238-0b4404aacfa9
+replace github.com/daeuniverse/outbound => github.com/daeuniverse/outbound v0.0.0-20240927164847-4ae0646c74fb
