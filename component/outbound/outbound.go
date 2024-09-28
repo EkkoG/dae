@@ -25,4 +25,5 @@ import (
 	_ "github.com/daeuniverse/outbound/transport/simpleobfs"
 	_ "github.com/daeuniverse/outbound/transport/tls"
 	_ "github.com/daeuniverse/outbound/transport/ws"
+	_ "github.com/daeuniverse/outbound/transport/shadowtls"
 )
